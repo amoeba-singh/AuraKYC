@@ -1,0 +1,319 @@
+/* src/components/Liveness/Liveness.css */
+.liveness-container {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(135deg, var(--background-light) 0%, var(--background-white) 100%);
+  min-height: calc(100vh - 80px);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeIn 0.6s ease-in;
+}
+
+.bio-title {
+  margin-bottom: 40px;
+  font-weight: 700;
+  font-size: 2.5rem;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: slideInUp 0.6s ease-out;
+}
+
+/* TABS */
+.bio-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 48px;
+  background: var(--background-white);
+  padding: 6px;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  border: 2px solid var(--border-color);
+  animation: scaleIn 0.6s ease-out 0.2s both;
+}
+
+.bio-tab {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: 12px 32px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.bio-tab::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+  border-radius: var(--radius-full);
+  transform: scale(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: -1;
+}
+
+.bio-tab:hover::before {
+  transform: scale(1);
+}
+
+.bio-tab:hover {
+  color: white;
+  transform: translateY(-2px);
+}
+
+.bio-tab.active {
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.bio-tab.active::before {
+  transform: scale(1);
+}
+
+/* WEBCAM SECTION */
+.bio-section {
+  animation: fadeIn 0.5s ease-in;
+}
+
+.webcam-wrapper {
+  position: relative;
+  width: 520px;
+  height: 400px;
+  margin: 0 auto 32px;
+  border: 3px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--background-white);
+  box-shadow: var(--shadow-lg);
+  transition: all 0.3s ease;
+  animation: scaleIn 0.6s ease-out 0.3s both;
+}
+
+.webcam-wrapper:hover {
+  border-color: var(--primary-blue-medium);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+}
+
+.webcam-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Face Oval Overlay */
+.face-overlay {
+  position: absolute;
+  top: 10%;
+  left: 25%;
+  width: 50%;
+  height: 80%;
+  border: 3px solid var(--primary-blue-medium);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 40px var(--primary-blue-medium) inset, 0 0 60px var(--primary-blue-light);
+  pointer-events: none;
+}
+
+.face-overlay.scanning {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 60px var(--primary-blue) inset, 0 0 80px var(--primary-blue-medium);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Face Scan Line Animation */
+.scan-line {
+  position: absolute;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(180deg, transparent, var(--primary-blue), transparent);
+  box-shadow: 0 0 20px var(--primary-blue);
+  top: 0;
+  animation: scanMove 2s infinite linear;
+  z-index: 10;
+}
+
+@keyframes scanMove {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+/* FINGERPRINT SENSOR */
+.fingerprint-sensor {
+  position: relative;
+  width: 180px;
+  height: 220px;
+  margin: 32px auto;
+  border: 3px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  background: var(--background-white);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: scaleIn 0.6s ease-out 0.3s both;
+}
+
+.fingerprint-sensor:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary-blue-medium);
+}
+
+.fingerprint-sensor:active {
+  transform: scale(0.98) translateY(-2px);
+}
+
+.fingerprint-sensor.success {
+  border-color: #10b981;
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+  animation: pulse 1s ease-in-out;
+}
+
+/* The SVG Icon */
+.fingerprint-svg {
+  width: 70%;
+  height: 70%;
+  color: var(--text-secondary);
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+
+.fingerprint-sensor:hover .fingerprint-svg {
+  color: var(--primary-blue);
+}
+
+/* The Filling Animation (The "Liquid" fill) */
+.scan-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(180deg, var(--primary-blue-light) 0%, var(--primary-blue-medium) 100%);
+  transition: height 0.1s linear;
+  z-index: 1;
+  border-top: 3px solid var(--primary-blue);
+  box-shadow: 0 -4px 20px var(--primary-blue-medium);
+}
+
+.fingerprint-sensor.success .scan-fill {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.4) 100%);
+  border-top: 3px solid #10b981;
+  height: 100% !important;
+  box-shadow: 0 -4px 30px rgba(16, 185, 129, 0.4);
+}
+
+.fingerprint-sensor.success .fingerprint-svg {
+  color: #10b981;
+}
+
+/* TEXT & BUTTONS */
+.status-text {
+  margin-top: 24px;
+  min-height: 40px;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 600;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.instruction-text {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-top: 8px;
+}
+
+.action-btn {
+  margin-top: 24px;
+  padding: 14px 40px;
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+  color: white;
+  border: none;
+  font-weight: 600;
+  font-size: 1.1rem;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.action-btn:hover::before {
+  left: 100%;
+}
+
+.action-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.action-btn:active {
+  transform: translateY(-1px);
+}
+
+.action-btn.success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Fade In Animation for Tabs */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .webcam-wrapper {
+    width: 100%;
+    max-width: 480px;
+    height: 360px;
+  }
+  
+  .fingerprint-sensor {
+    width: 150px;
+    height: 180px;
+  }
+}
+
