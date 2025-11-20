@@ -1,155 +1,227 @@
 // src/components/Liveness/Liveness.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import Webcam from 'react-webcam';
-import { useNavigate } from 'react-router-dom';
-import { useKYC } from '../../context/KYCContext';
-import './Liveness.css';
+import React, { useEffect, useRef, useState, useContext } from "react";
+import * as faceapi from "face-api.js";
+import { useKYC } from "../../context/KYCContext";
 
-const Liveness = () => {
-  const { setUserData, addLog } = useKYC();
-  const navigate = useNavigate();
-  
-  // TABS: 'FACE' or 'FINGERPRINT'
-  const [activeTab, setActiveTab] = useState('FACE');
+export default function Liveness() {
+  const {
+    sessionId,
+    documentImageUrl,
+    updateRiskScore,
+    userData,
+    setUserData,
+    addLog
+  } = useKYC();
 
-  // --- FACE ID STATE ---
-  const [faceStatus, setFaceStatus] = useState('Align your face in the oval...');
-  const [isFaceScanning, setIsFaceScanning] = useState(false);
+  const videoRef = useRef();
+  const canvasRef = useRef();
 
-  // --- FINGERPRINT STATE ---
-  const [fingerStatus, setFingerStatus] = useState('Press and Hold to Scan');
-  const [scanProgress, setScanProgress] = useState(0);
-  const [isFingerSuccess, setIsFingerSuccess] = useState(false);
-  const holdTimerRef = useRef(null); // To track the "holding" interval
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [matchScore, setMatchScore] = useState(null);
+  const [livenessScore, setLivenessScore] = useState(null);
 
-  // ===========================
-  // 1. FACE ID LOGIC
-  // ===========================
-  const startFaceScan = () => {
-    setIsFaceScanning(true);
-    setFaceStatus('🔍 Scanning depth map...');
-    
-    setTimeout(() => setFaceStatus('👁️ Checking passive liveness...'), 1500);
-    setTimeout(() => setFaceStatus('📸 Verifying against ID...'), 3000);
-    
-    setTimeout(() => {
-      setFaceStatus('✅ Verified!');
-      setUserData(prev => ({ ...prev, status: 'VERIFIED', riskScore: 98 }));
-      addLog('Biometric: Face Liveness Passed (99.9%).');
-      // Optional: Auto-navigate or let user choose
-    }, 4500);
-  };
+  // -----------------------------
+  // 1. LOAD FACE MODELS
+  // -----------------------------
+  useEffect(() => {
+    async function loadModels() {
+      const MODEL_URL =
+        process.env.REACT_APP_FACE_MODELS ||
+        "https://justadudewhohacks.github.io/face-api.js/models";
 
-  // ===========================
-  // 2. FINGERPRINT LOGIC
-  // ===========================
-  const startFingerScan = () => {
-    if (isFingerSuccess) return;
-    setFingerStatus('Scanning...');
-    
-    // Increase progress every 50ms
-    holdTimerRef.current = setInterval(() => {
-      setScanProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(holdTimerRef.current);
-          completeFingerScan();
-          return 100;
-        }
-        return prev + 2; // Speed of scan
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+
+      setModelsLoaded(true);
+      addLog("Liveness models loaded.");
+    }
+    loadModels();
+  }, []);
+
+
+  // -----------------------------
+  // 2. START CAMERA
+  // -----------------------------
+  useEffect(() => {
+    if (!modelsLoaded) return;
+
+    async function startVideo() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" }
+        });
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      } catch (e) {
+        alert("Camera access blocked. Please allow camera permissions.");
+        console.error(e);
+      }
+    }
+
+    startVideo();
+
+    return () => {
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [modelsLoaded]);
+
+
+  // --------------------------------------------
+  // 3. CAPTURE SELFIE + BIOMETRIC PROCESSING
+  // --------------------------------------------
+  async function captureSelfie() {
+    if (!videoRef.current) return;
+    setProcessing(true);
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    const selfieBlob = await new Promise((res) =>
+      canvas.toBlob(res, "image/jpeg", 0.92)
+    );
+
+    // Detect face on selfie
+    const selfieImage = await faceapi.bufferToImage(selfieBlob);
+    const selfieDet = await faceapi
+      .detectSingleFace(selfieImage)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (!selfieDet) {
+      alert("No face detected in selfie. Try better lighting.");
+      setProcessing(false);
+      return;
+    }
+
+    // Detect face on uploaded ID document
+    if (!documentImageUrl) {
+      alert("Document image missing. Upload ID first.");
+      setProcessing(false);
+      return;
+    }
+
+    const docImg = await faceapi.fetchImage(documentImageUrl);
+    const docDet = await faceapi
+      .detectSingleFace(docImg)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (!docDet) {
+      alert("No face detected on ID document.");
+      setProcessing(false);
+      return;
+    }
+
+    // Cosine similarity
+    function cosine(a, b) {
+      const dot = a.reduce((s, ai, i) => s + ai * b[i], 0);
+      const na = Math.sqrt(a.reduce((s, v) => s + v * v, 0));
+      const nb = Math.sqrt(b.reduce((s, v) => s + v * v, 0));
+      return dot / (na * nb);
+    }
+
+    const sim = cosine(selfieDet.descriptor, docDet.descriptor);
+    const mapped = Math.max(0, (sim + 1) / 2); // convert to [0-1]
+
+    setMatchScore(mapped.toFixed(3));
+    addLog(`Face match score: ${mapped.toFixed(3)}`);
+
+    // ------------------------------------------------
+    // 4. SEND TO BACKEND — REAL LIVENESS + PRNU
+    // ------------------------------------------------
+    const apiUrl = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+
+    const formData = new FormData();
+    formData.append("session_id", sessionId);
+    formData.append("match_score", mapped);
+    formData.append("selfie", selfieBlob, "selfie.jpg");
+
+    try {
+      const resp = await fetch(`${apiUrl}/biometric/liveness`, {
+        method: "POST",
+        body: formData
       });
-    }, 30);
-  };
 
-  const stopFingerScan = () => {
-    if (isFingerSuccess) return;
-    clearInterval(holdTimerRef.current);
-    setScanProgress(0);
-    setFingerStatus('Scan Failed. Hold until complete.');
-  };
+      const data = await resp.json();
 
-  const completeFingerScan = () => {
-    setIsFingerSuccess(true);
-    setFingerStatus('✅ Fingerprint Verified');
-    setUserData(prev => ({ ...prev, riskScore: 99 })); // Boost trust score
-    addLog('Biometric: Fingerprint Matched (Source: Touch Sensor).');
-  };
+      if (data.liveness_score) {
+        setLivenessScore(data.liveness_score);
+        addLog(`Liveness score: ${data.liveness_score}`);
+      }
+
+      if (data.prnu_verified !== undefined) {
+        addLog(`PRNU spoof check: ${data.prnu_verified ? "PASS" : "FAIL"}`);
+      }
+
+      // Update verification result into global KYC state
+      if (mapped > 0.75 && data.liveness_score > 0.75) {
+        setUserData((prev) => ({ ...prev, status: "VERIFIED" }));
+        addLog("Biometrics verified successfully.");
+      } else {
+        setUserData((prev) => ({ ...prev, status: "RISK_DETECTED" }));
+        addLog("Biometrics suspicious — flagged for review.");
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit biometric data.");
+    }
+
+    setProcessing(false);
+  }
+
 
   return (
     <div className="liveness-container">
-      <h2 className="bio-title">Biometric Assurance Agent</h2>
+      <h2>Biometric Liveness Verification</h2>
+      {!modelsLoaded && (
+        <div>Loading biometric models… please wait.</div>
+      )}
 
-      {/* TOGGLE TABS */}
-      <div className="bio-tabs">
-        <button 
-          className={`bio-tab ${activeTab === 'FACE' ? 'active' : ''}`}
-          onClick={() => setActiveTab('FACE')}
-        >
-          Face ID
-        </button>
-        <button 
-          className={`bio-tab ${activeTab === 'FINGERPRINT' ? 'active' : ''}`}
-          onClick={() => setActiveTab('FINGERPRINT')}
-        >
-          Touch ID
-        </button>
-      </div>
+      <video
+        ref={videoRef}
+        width="420"
+        height="320"
+        style={{ border: "1px solid #ccc", borderRadius: 8 }}
+      ></video>
 
-      {/* --- FACE ID SECTION --- */}
-      {activeTab === 'FACE' && (
-        <div className="bio-section fade-in">
-          <div className="webcam-wrapper">
-            <Webcam audio={false} className="webcam-feed" />
-            <div className={`face-overlay ${isFaceScanning ? 'scanning' : ''}`}></div>
-            {/* Scanning Line Animation */}
-            {isFaceScanning && <div className="scan-line"></div>}
-          </div>
-          <h3 className="status-text">{faceStatus}</h3>
-          {!isFaceScanning && (
-            <button className="action-btn" onClick={startFaceScan}>Start Face Scan</button>
-          )}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      <button
+        onClick={captureSelfie}
+        disabled={!modelsLoaded || processing}
+        style={{ marginTop: 16 }}
+      >
+        {processing ? "Processing…" : "Capture & Verify"}
+      </button>
+
+      {matchScore && (
+        <div style={{ marginTop: 12 }}>
+          Face Match Score: <b>{matchScore}</b>
         </div>
       )}
 
-      {/* --- FINGERPRINT SECTION --- */}
-      {activeTab === 'FINGERPRINT' && (
-        <div className="bio-section fade-in">
-          <div 
-            className={`fingerprint-sensor ${isFingerSuccess ? 'success' : ''}`}
-            onMouseDown={startFingerScan}
-            onMouseUp={stopFingerScan}
-            onMouseLeave={stopFingerScan}
-            onTouchStart={startFingerScan} // For mobile support
-            onTouchEnd={stopFingerScan}
-          >
-            {/* SVG Fingerprint Icon */}
-            <svg viewBox="0 0 100 100" className="fingerprint-svg">
-              <path d="M50,10 C35,10 25,25 25,40 C25,55 30,60 35,70 C40,80 40,90 40,90" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.5"/>
-              <path d="M60,10 C75,10 85,25 85,40 C85,55 80,60 75,70 C70,80 70,90 70,90" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.5"/>
-              <path d="M50,25 C40,25 35,35 35,45 C35,55 40,65 50,65 C60,65 65,55 65,45 C65,35 60,25 50,25" stroke="currentColor" strokeWidth="4" fill="none"/>
-              <path d="M50,40 C45,40 45,45 45,50" stroke="currentColor" strokeWidth="4" fill="none"/>
-              {/* Simple concentric lines for effect */}
-              <circle cx="50" cy="50" r="35" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="10,5" />
-              <circle cx="50" cy="50" r="25" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="10,5" />
-            </svg>
-            
-            {/* The Filling Animation */}
-            <div className="scan-fill" style={{ height: `${scanProgress}%` }}></div>
-          </div>
+      {livenessScore && (
+        <div>
+          Liveness Score: <b>{livenessScore}</b>
+        </div>
+      )}
 
-          <h3 className="status-text">{fingerStatus}</h3>
-          {!isFingerSuccess && <p className="instruction-text">(Click and Hold to Scan)</p>}
-          
-          {/* Proceed Button appears only after verification */}
-          {(isFingerSuccess || faceStatus.includes('Verified')) && (
-            <button className="action-btn success" onClick={() => navigate('/dashboard')}>
-              Go to Dashboard
-            </button>
-          )}
+      {userData.status !== "UNVERIFIED" && (
+        <div style={{ marginTop: 16, padding: 12 }}>
+          Status: <b>{userData.status}</b>
         </div>
       )}
     </div>
   );
-};
-
-export default Liveness;
-
+}
